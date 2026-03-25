@@ -1,0 +1,178 @@
+{
+  "Pepper_bell_Bacterial_spot": {
+    "plante": "Pepper",
+    "maladie": "Tache bactérienne",
+    "statut": "attention",
+    "urgence": false,
+    "cause": "Bactérie Xanthomonas — eau contaminée.",
+    "symptomes": [
+      "Petites taches noires",
+      "Bordure jaune",
+      "Chute des feuilles"
+    ],
+    "traitement": [
+      "Traitement cuivré",
+      "Arrosage à la base",
+      "Éliminer débris"
+    ],
+    "prevention": "Eau propre et éviter blessures."
+  },
+  "Pepper_bell_healthy": {
+    "plante": "Pepper",
+    "maladie": "Aucune",
+    "statut": "saine",
+    "urgence": false,
+    "cause": "Plante en bonne santé.",
+    "symptomes": [
+      "Feuilles vertes normales",
+      "Pas de taches visibles"
+    ],
+    "traitement": [
+      "Continuer l'arrosage régulier",
+      "Surveillance normale",
+      "Maintenir ventilation"
+    ],
+    "prevention": "Continuez vos bonnes pratiques !"
+  },
+  "Potato_Early_blight": {
+    "plante": "Potato",
+    "maladie": "Alternariose (mildiou précoce)",
+    "statut": "malade",
+    "urgence": false,
+    "cause": "Champignon Alternaria solani — humidité et chaleur.",
+    "symptomes": [
+      "Taches brunes concentriques",
+      "Jaunissement des feuilles",
+      "Défoliation progressive"
+    ],
+    "traitement": [
+      "Retirer feuilles infectées",
+      "Fongicide cuivré",
+      "Réduire humidité"
+    ],
+    "prevention": "Rotation des cultures et arrosage à la base."
+  },
+  "Potato_Late_blight": {
+    "plante": "Potato",
+    "maladie": "Mildiou tardif",
+    "statut": "critique",
+    "urgence": true,
+    "cause": "Phytophthora infestans — très destructeur et contagieux.",
+    "symptomes": [
+      "Taches brunes irrégulières",
+      "Bords jaunâtres",
+      "Pourriture rapide"
+    ],
+    "traitement": [
+      "TRAITEMENT FONGICIDE URGENT",
+      "Isoler les plants infectés",
+      "Détruire parties malades"
+    ],
+    "prevention": "Variétés résistantes et traitements préventifs."
+  },
+  "Potato_healthy": {
+    "plante": "Potato",
+    "maladie": "Aucune",
+    "statut": "saine",
+    "urgence": false,
+    "cause": "Plante en bonne santé.",
+    "symptomes": [
+      "Feuilles vertes normales",
+      "Pas de taches visibles"
+    ],
+    "traitement": [
+      "Continuer l'arrosage régulier",
+      "Surveillance normale",
+      "Maintenir ventilation"
+    ],
+    "prevention": "Continuez vos bonnes pratiques !"
+  },
+  "Tomato_Bacterial_spot": {
+    "plante": "Tomato",
+    "maladie": "Tache bactérienne",
+    "statut": "attention",
+    "urgence": false,
+    "cause": "Bactérie Xanthomonas — eau contaminée.",
+    "symptomes": [
+      "Petites taches noires",
+      "Bordure jaune",
+      "Chute des feuilles"
+    ],
+    "traitement": [
+      "Traitement cuivré",
+      "Arrosage à la base",
+      "Éliminer débris"
+    ],
+    "prevention": "Eau propre et éviter blessures."
+  },
+  "Tomato_Early_blight": {
+    "plante": "Tomato",
+    "maladie": "Alternariose (mildiou précoce)",
+    "statut": "malade",
+    "urgence": false,
+    "cause": "Champignon Alternaria solani — humidité et chaleur.",
+    "symptomes": [
+      "Taches brunes concentriques",
+      "Jaunissement des feuilles",
+      "Défoliation progressive"
+    ],
+    "traitement": [
+      "Retirer feuilles infectées",
+      "Fongicide cuivré",
+      "Réduire humidité"
+    ],
+    "prevention": "Rotation des cultures et arrosage à la base."
+  },
+  "Tomato_Late_blight": {
+    "plante": "Tomato",
+    "maladie": "Mildiou tardif",
+    "statut": "critique",
+    "urgence": true,
+    "cause": "Phytophthora infestans — très destructeur et contagieux.",
+    "symptomes": [
+      "Taches brunes irrégulières",
+      "Bords jaunâtres",
+      "Pourriture rapide"
+    ],
+    "traitement": [
+      "TRAITEMENT FONGICIDE URGENT",
+      "Isoler les plants infectés",
+      "Détruire parties malades"
+    ],
+    "prevention": "Variétés résistantes et traitements préventifs."
+  },
+  "Tomato_Leaf_Mold": {
+    "plante": "Tomato",
+    "maladie": "Moisissure des feuilles",
+    "statut": "malade",
+    "urgence": false,
+    "cause": "Champignon Passalora fulva — humidité > 85%.",
+    "symptomes": [
+      "Taches jaunâtres dessus",
+      "Moisissure grisâtre dessous"
+    ],
+    "traitement": [
+      "Améliorer ventilation",
+      "Réduire humidité < 80%",
+      "Fongicide si nécessaire"
+    ],
+    "prevention": "Humidité < 80% et aération régulière."
+  },
+  "Tomato_healthy": {
+    "plante": "Tomato",
+    "maladie": "Aucune",
+    "statut": "saine",
+    "urgence": false,
+    "cause": "Plante en bonne santé.",
+    "symptomes": [
+      "Feuilles vertes normales",
+      "Pas de taches visibles"
+    ],
+    "traitement": [
+      "Continuer l'arrosage régulier",
+      "Surveillance normale",
+      "Maintenir ventilation"
+    ],
+    "prevention": "Continuez vos bonnes pratiques !"
+  }
+}
