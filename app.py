@@ -4,9 +4,12 @@ import numpy as np
 import joblib
 import tensorflow as tf
 import os
-import anthropic
 import json
+import google.generativeai as genai
+import urllib.request
 
+# Configure la clé une seule fois en dehors des fonctions
+genai.configure(api_key=os.environ.get('GOOGLE_API_KEY', 'AIzaSyARPIlFPmLqOb5iZM17V6eVg5gSPmZ2N2w'))
 
 app = Flask(__name__)
 CORS(app)
@@ -30,9 +33,9 @@ def home():
         'routes': [
             '/predict/disease  → Random Forest',
             '/predict/lstm     → Prévision LSTM',
+            '/predict/plant    → Diagnostic Gemini Vision',
         ]
     })
-
 # ═══════════════════════════════════════════════════
 # ROUTE 1 — Random Forest (Risque maladie)
 # ═══════════════════════════════════════════════════
@@ -160,23 +163,19 @@ def predict_lstm():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-# ── Lancement ─────────────────────────────────────────
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
 
 
 
-    # ═══════════════════════════════════════════════════
-# ROUTE 3 — Diagnostic plante (Claude Vision)
+   # ═══════════════════════════════════════════════════
+# ROUTE 3 — Diagnostic plante (Google Gemini Vision)
 # ═══════════════════════════════════════════════════
 @app.route('/predict/plant', methods=['POST'])
 def predict_plant():
     try:
+        # 1. Récupération des données du front-end (Flutter)
         body       = request.get_json()
         image_b64  = body.get('image', '')
-        media_type = body.get('media_type',
-                               'image/jpeg')
+        media_type = body.get('media_type', 'image/jpeg')
 
         if not image_b64:
             return jsonify({
@@ -184,64 +183,51 @@ def predict_plant():
                 'message': 'Image manquante'
             }), 400
 
-        client = anthropic.Anthropic(
-            api_key=os.environ.get(
-                'ANTHROPIC_API_KEY', ''))
+        # 2. Initialisation du modèle Gemini 1.5 Flash
+        # Utilise exactement ce nom :
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
-        prompt = '''Tu es un expert en agronomie
-et maladies des plantes de serre tunisiennes.
 
-Analyse cette photo de feuille de plante et fournis
-un diagnostic complet en JSON avec exactement
-cette structure :
-{
-  "etat": "saine" ou "malade" ou "stress",
-  "maladie": "nom de la maladie ou Aucune",
-  "confiance": 85,
-  "symptomes": ["symptome 1", "symptome 2"],
-  "causes": ["cause 1", "cause 2"],
-  "traitement": ["etape 1", "etape 2", "etape 3"],
-  "prevention": ["conseil 1", "conseil 2"],
-  "urgence": "faible" ou "moyenne" ou "elevee",
-  "conseil": "message court pour l agriculteur"
-}
 
-Reponds UNIQUEMENT avec le JSON valide,
-sans texte avant ou apres.'''
+        # 3. Le Prompt (Instructions précises)
+        prompt = '''Tu es un expert en agronomie et maladies des plantes de serre tunisiennes.
+        Analyse cette photo de feuille de plante et fournis un diagnostic complet en JSON avec exactement cette structure :
+        {
+          "etat": "saine" ou "malade" ou "stress",
+          "maladie": "nom de la maladie ou Aucune",
+          "confiance": 85,
+          "symptomes": ["symptome 1", "symptome 2"],
+          "causes": ["cause 1", "cause 2"],
+          "traitement": ["etape 1", "etape 2", "etape 3"],
+          "prevention": ["conseil 1", "conseil 2"],
+          "urgence": "faible" ou "moyenne" ou "elevee",
+          "conseil": "message court pour l agriculteur"
+        }
+        Reponds UNIQUEMENT avec le JSON valide, sans texte avant ou apres.'''
 
-        message = client.messages.create(
-            model='claude-sonnet-4-20250514',
-            max_tokens=1000,
-            messages=[{
-                'role':    'user',
-                'content': [
-                    {
-                        'type': 'image',
-                        'source': {
-                            'type':       'base64',
-                            'media_type': media_type,
-                            'data':       image_b64,
-                        },
-                    },
-                    {
-                        'type': 'text',
-                        'text': prompt,
-                    },
-                ],
-            }],
-        )
+        # 4. Appel à l'API Gemini avec l'image Base64
+        response = model.generate_content([
+            {'mime_type': media_type, 'data': image_b64},
+            prompt
+        ])
 
-        text  = message.content[0].text
-        clean = text.replace('```json', '') \
-                    .replace('```', '') \
-                    .strip()
+        # 5. Nettoyage et conversion en dictionnaire Python
+        # Gemini entoure souvent le JSON de ```json ... ```, on les retire.
+        text_raw = response.text
+        clean_json = text_raw.replace('```json', '').replace('```', '').strip()
+        
+        result = json.loads(clean_json)
+        result['status'] = 'ok'  # Ajout du status pour ton application
 
-        result         = json.loads(clean)
-        result['status'] = 'ok'
         return jsonify(result)
 
     except Exception as e:
+        # En cas d'erreur (Clé API invalide, format image corrompu, etc.)
         return jsonify({
             'status':  'error',
             'message': str(e)
         }), 500
+ # ── Lancement ─────────────────────────────────────────
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
