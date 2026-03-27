@@ -5,6 +5,8 @@ import joblib
 import tensorflow as tf
 import os
 import json
+import datetime
+import base64
 import google.generativeai as genai
 
 app = Flask(__name__)
@@ -16,11 +18,10 @@ genai.configure(api_key=os.environ.get('GEMINI_API_KEY', ''))
 # ── Charger les modèles ───────────────────────────────────────
 print("📦 Chargement des modèles ML...")
 
-rf_model    = joblib.load('models/rf_model.joblib')
-interpreter = tf.lite.Interpreter(model_path='models/lstm_model.tflite')
-interpreter.allocate_tensors()
-lstm_mean   = np.load('models/lstm_mean.npy')
-lstm_std    = np.load('models/lstm_std.npy')
+rf_model   = joblib.load('models/rf_model.joblib')
+lstm_model = tf.keras.models.load_model('models/lstm_model.keras')  # ✅ Keras direct
+lstm_mean  = np.load('models/lstm_mean.npy')
+lstm_std   = np.load('models/lstm_std.npy')
 
 print("✅ Modèles chargés !")
 
@@ -85,7 +86,7 @@ def predict_disease():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════
-# ROUTE 2 — LSTM TFLite (Prévision 6 heures)
+# ROUTE 2 — LSTM Keras (Prévision 6 heures)         ✅ CORRIGÉ
 # ══════════════════════════════════════════════════════════════
 @app.route('/predict/lstm', methods=['POST'])
 def predict_lstm():
@@ -104,26 +105,20 @@ def predict_lstm():
         for i in range(24):
             noise = np.random.normal(0, 0.1, 5)
             sequence.append(base + noise)
-        sequence = np.array(sequence, dtype='float32')
 
+        sequence = np.array(sequence, dtype='float32')
         seq_norm = (sequence - lstm_mean) / lstm_std
         seq_norm = seq_norm.reshape(1, 24, 5).astype('float32')
 
-        input_details  = interpreter.get_input_details()
-        output_details = interpreter.get_output_details()
-
         predictions = []
-        import datetime
         now = datetime.datetime.now()
 
         for i in range(1, 7):
-            interpreter.set_tensor(input_details[0]['index'], seq_norm)
-            interpreter.invoke()
-            pred_norm = interpreter.get_tensor(output_details[0]['index'])[0][0]
-
-            temp_pred = float(pred_norm) * lstm_std[0] + lstm_mean[0]
-            hum_delta = -0.8 * (temp_pred - temperature)
-            co2_delta = np.random.normal(0, 40)
+            # ✅ lstm_model.predict (plus de interpreter)
+            pred_norm   = lstm_model.predict(seq_norm, verbose=0)[0][0]
+            temp_pred   = float(pred_norm) * lstm_std[0] + lstm_mean[0]
+            hum_delta   = -0.8 * (temp_pred - temperature)
+            co2_delta   = np.random.normal(0, 40)
             future_hour = now + datetime.timedelta(hours=i)
 
             predictions.append({
@@ -133,13 +128,11 @@ def predict_lstm():
                 'co2':         int(np.clip(co2 + co2_delta, 400, 2000)),
             })
 
-            new_point = np.array([
-                temp_pred, humidity + hum_delta,
-                co2 + co2_delta, lumiere, sol
-            ], dtype='float32')
-            new_norm = (new_point - lstm_mean) / lstm_std
-            seq_norm = np.roll(seq_norm, -1, axis=1)
-            seq_norm[0, -1, :] = new_norm
+            new_point         = np.array([temp_pred, humidity + hum_delta,
+                                          co2 + co2_delta, lumiere, sol], dtype='float32')
+            new_norm          = (new_point - lstm_mean) / lstm_std
+            seq_norm          = np.roll(seq_norm, -1, axis=1)
+            seq_norm[0, -1,:] = new_norm
 
         return jsonify({'status': 'ok', 'predictions': predictions})
 
@@ -147,9 +140,9 @@ def predict_lstm():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════
-# ROUTE 3 — Diagnostic plante (Google Gemini Vision)
+# ROUTE 3 — Diagnostic plante (Gemini Vision)        ✅ CORRIGÉ
 # ══════════════════════════════════════════════════════════════
-@app.route('/predict/plant', methods=['POST'])
+@app.route('/predict/plant', methods=['POST'])        # ✅ bonne route
 def predict_plant():
     try:
         body       = request.get_json()
@@ -159,8 +152,17 @@ def predict_plant():
         if not image_b64:
             return jsonify({'status': 'error', 'message': 'Image manquante'}), 400
 
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Nettoyer préfixe data URL si présent
+        if ',' in image_b64:
+            image_b64 = image_b64.split(',')[1]
 
+        # Valider base64
+        try:
+            base64.b64decode(image_b64)
+        except Exception:
+            return jsonify({'status': 'error', 'message': 'Base64 invalide'}), 400
+
+        model  = genai.GenerativeModel('gemini-1.5-flash')
         prompt = """Tu es un expert en agronomie et maladies des plantes de serre tunisiennes.
 
 Analyse cette photo de feuille de plante et fournis un diagnostic complet en JSON avec exactement cette structure :
@@ -178,16 +180,32 @@ Analyse cette photo de feuille de plante et fournis un diagnostic complet en JSO
 
 Reponds UNIQUEMENT avec le JSON valide, sans texte avant ou apres."""
 
-        response = model.generate_content([
-            {'mime_type': media_type, 'data': image_b64},
-            prompt
-        ])
+        image_part = {
+            "inline_data": {
+                "mime_type": media_type,
+                "data": image_b64
+            }
+        }
 
-        clean = response.text.replace('```json', '').replace('```', '').strip()
+        response = model.generate_content([image_part, prompt])
+
+        clean = response.text.strip()
+        if clean.startswith('```'):
+            clean = clean.split('```')[1]
+            if clean.startswith('json'):
+                clean = clean[4:]
+        clean = clean.strip()
+
         result = json.loads(clean)
         result['status'] = 'ok'
         return jsonify(result)
 
+    except json.JSONDecodeError as e:
+        return jsonify({
+            'status':  'error',
+            'message': f'Réponse Gemini non parseable: {str(e)}',
+            'raw':     response.text if 'response' in locals() else ''
+        }), 500
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
