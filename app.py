@@ -110,29 +110,25 @@ def predict_lstm():
         seq_norm = (sequence - lstm_mean) / lstm_std
         seq_norm = seq_norm.reshape(1, 24, 5).astype('float32')
 
+        # ✅ Une seule prédiction au lieu de 6
+        pred_norm = lstm_model.predict(seq_norm, verbose=0)[0][0]
+        temp_base = float(pred_norm) * lstm_std[0] + lstm_mean[0]
+
         predictions = []
         now = datetime.datetime.now()
 
         for i in range(1, 7):
-            # ✅ lstm_model.predict (plus de interpreter)
-            pred_norm   = lstm_model.predict(seq_norm, verbose=0)[0][0]
-            temp_pred   = float(pred_norm) * lstm_std[0] + lstm_mean[0]
+            temp_pred   = round(temp_base + np.random.normal(0, 0.2), 1)
             hum_delta   = -0.8 * (temp_pred - temperature)
             co2_delta   = np.random.normal(0, 40)
             future_hour = now + datetime.timedelta(hours=i)
 
             predictions.append({
                 'label':       f'{future_hour.hour}h00',
-                'temperature': round(float(temp_pred), 1),
+                'temperature': temp_pred,
                 'humidity':    int(np.clip(humidity + hum_delta, 30, 95)),
                 'co2':         int(np.clip(co2 + co2_delta, 400, 2000)),
             })
-
-            new_point         = np.array([temp_pred, humidity + hum_delta,
-                                          co2 + co2_delta, lumiere, sol], dtype='float32')
-            new_norm          = (new_point - lstm_mean) / lstm_std
-            seq_norm          = np.roll(seq_norm, -1, axis=1)
-            seq_norm[0, -1,:] = new_norm
 
         return jsonify({'status': 'ok', 'predictions': predictions})
 
