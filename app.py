@@ -20,9 +20,8 @@ print("📦 Chargement des modèles ML...")
 rf_model   = joblib.load('models/rf_model.joblib')
 lstm_mean  = np.load('models/lstm_mean.npy')
 lstm_std   = np.load('models/lstm_std.npy')
-temp_coef  = np.load('models/temp_coef.npy')   # ✅ léger
-data_stats = np.load('models/data_stats.npy')  # ✅ léger
-
+temp_coef  = np.load('models/temp_coef.npy')
+data_stats = np.load('models/data_stats.npy')
 
 print("✅ Modèles chargés !")
 
@@ -87,9 +86,6 @@ def predict_disease():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════
-# ROUTE 2 — LSTM Keras (Prévision 6 heures)         ✅ CORRIGÉ
-# ══════════════════════════════════════════════════════════════
-# ══════════════════════════════════════════════════════════════
 # ROUTE 2 — Prévision légère sans TensorFlow
 # ══════════════════════════════════════════════════════════════
 @app.route('/predict/lstm', methods=['POST'])
@@ -107,7 +103,6 @@ def predict_lstm():
         predictions = []
         now = datetime.datetime.now()
 
-        # Prévision basée sur tendance + variation naturelle
         for i in range(1, 7):
             temp_drift  = temp_coef[0] * i * 0.1
             temp_pred   = round(temperature + temp_drift + np.random.normal(0, 0.3), 1)
@@ -128,9 +123,9 @@ def predict_lstm():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════
-# ROUTE 3 — Diagnostic plante (Gemini Vision)        ✅ CORRIGÉ
+# ROUTE 3 — Diagnostic plante (Gemini Vision)
 # ══════════════════════════════════════════════════════════════
-@app.route('/predict/plant', methods=['POST'])        # ✅ bonne route
+@app.route('/predict/plant', methods=['POST'])
 def predict_plant():
     try:
         body       = request.get_json()
@@ -140,17 +135,15 @@ def predict_plant():
         if not image_b64:
             return jsonify({'status': 'error', 'message': 'Image manquante'}), 400
 
-        # Nettoyer préfixe data URL si présent
         if ',' in image_b64:
             image_b64 = image_b64.split(',')[1]
 
-        # Valider base64
         try:
             base64.b64decode(image_b64)
         except Exception:
             return jsonify({'status': 'error', 'message': 'Base64 invalide'}), 400
 
-        model  = genai.GenerativeModel('gemini-1.5-flash')
+        model  = genai.GenerativeModel('gemini-2.0-flash')  # ✅ modèle à jour
         prompt = """Tu es un expert en agronomie et maladies des plantes de serre tunisiennes.
 
 Analyse cette photo de feuille de plante et fournis un diagnostic complet en JSON avec exactement cette structure :
