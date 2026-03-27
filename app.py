@@ -159,7 +159,7 @@ def predict_plant():
         if not image_b64:
             return jsonify({'status': 'error', 'message': 'Image manquante'}), 400
 
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        model = genai.GenerativeModel('gemini-1.5-flash')
 
         prompt = """Tu es un expert en agronomie et maladies des plantes de serre tunisiennes.
 
