@@ -6,13 +6,14 @@ import os
 import json
 import datetime
 import base64
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 app = Flask(__name__)
 CORS(app)
 
 # ── Configurer Gemini ─────────────────────────────────────────
-genai.configure(api_key=os.environ.get('GEMINI_API_KEY', ''))
+client_gemini = genai.Client(api_key=os.environ.get('GEMINI_API_KEY', ''))
 
 # ── Charger les modèles ───────────────────────────────────────
 print("📦 Chargement des modèles ML...")
@@ -123,7 +124,7 @@ def predict_lstm():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════
-# ROUTE 3 — Diagnostic plante (Gemini Vision)
+# ROUTE 3 — Diagnostic plante (Gemini Vision) ✅ nouveau SDK
 # ══════════════════════════════════════════════════════════════
 @app.route('/predict/plant', methods=['POST'])
 def predict_plant():
@@ -135,15 +136,16 @@ def predict_plant():
         if not image_b64:
             return jsonify({'status': 'error', 'message': 'Image manquante'}), 400
 
+        # Nettoyer préfixe data URL si présent
         if ',' in image_b64:
             image_b64 = image_b64.split(',')[1]
 
+        # Valider et décoder base64
         try:
-            base64.b64decode(image_b64)
+            image_bytes = base64.b64decode(image_b64)
         except Exception:
             return jsonify({'status': 'error', 'message': 'Base64 invalide'}), 400
 
-        model = genai.GenerativeModel('gemini-1.5-flash-8b')  # ✅ modèle à jour
         prompt = """Tu es un expert en agronomie et maladies des plantes de serre tunisiennes.
 
 Analyse cette photo de feuille de plante et fournis un diagnostic complet en JSON avec exactement cette structure :
@@ -161,14 +163,14 @@ Analyse cette photo de feuille de plante et fournis un diagnostic complet en JSO
 
 Reponds UNIQUEMENT avec le JSON valide, sans texte avant ou apres."""
 
-        image_part = {
-            "inline_data": {
-                "mime_type": media_type,
-                "data": image_b64
-            }
-        }
-
-        response = model.generate_content([image_part, prompt])
+        # ✅ Nouveau SDK google-genai
+        response = client_gemini.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=[
+                types.Part.from_bytes(data=image_bytes, mime_type=media_type),
+                prompt
+            ]
+        )
 
         clean = response.text.strip()
         if clean.startswith('```'):
