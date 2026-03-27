@@ -1,11 +1,17 @@
+import os
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
-import tensorflow as tf
 from tensorflow import keras
 import joblib
+
+os.makedirs('models', exist_ok=True)
 
 print("📊 Chargement des données...")
 df = pd.read_csv('data/sensor_data.csv')
@@ -30,10 +36,10 @@ def compute_risk(row):
     if row['temperature'] > 33:
         risk += 15
     if risk > 50:
-        return 2   # danger
+        return 2
     elif risk > 25:
-        return 1   # attention
-    return 0       # bon
+        return 1
+    return 0
 
 df['risk_label'] = df.apply(compute_risk, axis=1)
 
@@ -46,17 +52,12 @@ y_rf = df['risk_label'].values
 X_train, X_test, y_train, y_test = train_test_split(
     X_rf, y_rf, test_size=0.2, random_state=42)
 
-rf = RandomForestClassifier(
-    n_estimators=100,
-    random_state=42,
-    max_depth=10,
-)
+rf = RandomForestClassifier(n_estimators=100, random_state=42, max_depth=10)
 rf.fit(X_train, y_train)
 
-y_pred = rf.predict(X_test)
 print("\n📊 Rapport Random Forest :")
 print(classification_report(
-    y_test, y_pred,
+    y_test, rf.predict(X_test),
     target_names=['Bon', 'Attention', 'Danger'],
     zero_division=0,
 ))
@@ -65,7 +66,7 @@ joblib.dump(rf, 'models/rf_model.joblib')
 print("✅ Random Forest sauvegardé → models/rf_model.joblib")
 
 # ═══════════════════════════════════════════════════
-# MODÈLE 2 — LSTM (Prévision température 6h)
+# MODÈLE 2 — LSTM (entraînement local uniquement)
 # ═══════════════════════════════════════════════════
 print("\n🧠 Entraînement LSTM...")
 
@@ -82,14 +83,12 @@ np.save('models/lstm_std.npy',  std_vals)
 
 SEQ_LEN = 24
 X_seq, y_seq = [], []
-
 for i in range(len(data_norm) - SEQ_LEN - 1):
     X_seq.append(data_norm[i:i + SEQ_LEN])
     y_seq.append(data_norm[i + SEQ_LEN, 0])
 
 X_seq = np.array(X_seq)
 y_seq = np.array(y_seq)
-
 print(f"Séquences créées : {X_seq.shape}")
 
 split      = int(len(X_seq) * 0.8)
@@ -97,11 +96,8 @@ X_tr, X_te = X_seq[:split],  X_seq[split:]
 y_tr, y_te = y_seq[:split],  y_seq[split:]
 
 model = keras.Sequential([
-    keras.layers.LSTM(
-        64,
-        return_sequences=True,
-        input_shape=(SEQ_LEN, len(features)),
-    ),
+    keras.layers.Input(shape=(SEQ_LEN, len(features))),  # ✅ pas de warning
+    keras.layers.LSTM(64, return_sequences=True),
     keras.layers.Dropout(0.2),
     keras.layers.LSTM(32),
     keras.layers.Dropout(0.2),
@@ -109,15 +105,10 @@ model = keras.Sequential([
     keras.layers.Dense(1),
 ])
 
-model.compile(
-    optimizer='adam',
-    loss='mse',
-    metrics=['mae'],
-)
-
+model.compile(optimizer='adam', loss='mse', metrics=['mae'])
 model.summary()
 
-history = model.fit(
+model.fit(
     X_tr, y_tr,
     epochs=30,
     batch_size=32,
@@ -130,37 +121,31 @@ print(f"\n📊 LSTM — MAE : {mae:.4f}")
 
 model.save('models/lstm_model.keras')
 print("✅ LSTM sauvegardé → models/lstm_model.keras")
+
 # ═══════════════════════════════════════════════════
-# CONVERSION → TFLite ✅
+# MODÈLE LÉGER — export numpy (pour Render/production)
 # ═══════════════════════════════════════════════════
-print("\n🔄 Conversion LSTM → TFLite...")
+print("\n💾 Export modèle léger pour production...")
 
-converter = tf.lite.TFLiteConverter.from_keras_model(model)
+X_lin = np.arange(len(data_lstm)).reshape(-1, 1).astype('float32')
+y_lin = data_lstm[:, 0]  # température
 
-# ✅ Fix pour LSTM (TensorList ops)
-converter.target_spec.supported_ops = [
-    tf.lite.OpsSet.TFLITE_BUILTINS,
-    tf.lite.OpsSet.SELECT_TF_OPS       # ← obligatoire pour LSTM
-]
-converter._experimental_lower_tensor_list_ops = False  # ← clé du fix
-converter.optimizations = [tf.lite.Optimize.DEFAULT]
+lr = LinearRegression()
+lr.fit(X_lin, y_lin)
 
-tflite_model = converter.convert()
+np.save('models/temp_coef.npy', np.array([lr.coef_[0], lr.intercept_]))
+np.save('models/data_stats.npy', np.array([
+    data_lstm[:, 0].mean(),  # temp mean
+    data_lstm[:, 0].std(),   # temp std
+    data_lstm[:, 1].mean(),  # humidity mean
+    data_lstm[:, 2].mean(),  # co2 mean
+]))
 
-with open('models/lstm_model.tflite', 'wb') as f:
-    f.write(tflite_model)
-
-# Vérification
-interpreter_test = tf.lite.Interpreter(model_path='models/lstm_model.tflite')
-interpreter_test.allocate_tensors()
-input_shape = interpreter_test.get_input_details()[0]['shape']
-print(f"✅ TFLite OK — input shape : {input_shape}")
-
-print("\n🎉 Tous les modèles sont prêts dans models/")
+print("✅ Modèle léger sauvegardé !")
+print("\n🎉 Tous les modèles sont prêts !")
 print("📁 models/rf_model.joblib")
-print("📁 models/lstm_model.tflite")
+print("📁 models/lstm_model.keras")
 print("📁 models/lstm_mean.npy")
 print("📁 models/lstm_std.npy")
-
-print("\n🎉 Entraînement terminé !")
-print("📁 Modèles sauvegardés dans models/")
+print("📁 models/temp_coef.npy")
+print("📁 models/data_stats.npy")

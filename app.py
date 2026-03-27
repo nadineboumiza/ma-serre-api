@@ -19,9 +19,11 @@ genai.configure(api_key=os.environ.get('GEMINI_API_KEY', ''))
 print("📦 Chargement des modèles ML...")
 
 rf_model   = joblib.load('models/rf_model.joblib')
-lstm_model = tf.keras.models.load_model('models/lstm_model.keras')  # ✅ Keras direct
 lstm_mean  = np.load('models/lstm_mean.npy')
 lstm_std   = np.load('models/lstm_std.npy')
+temp_coef  = np.load('models/temp_coef.npy')   # ✅ léger
+data_stats = np.load('models/data_stats.npy')  # ✅ léger
+
 
 print("✅ Modèles chargés !")
 
@@ -88,6 +90,9 @@ def predict_disease():
 # ══════════════════════════════════════════════════════════════
 # ROUTE 2 — LSTM Keras (Prévision 6 heures)         ✅ CORRIGÉ
 # ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
+# ROUTE 2 — Prévision légère sans TensorFlow
+# ══════════════════════════════════════════════════════════════
 @app.route('/predict/lstm', methods=['POST'])
 def predict_lstm():
     try:
@@ -100,25 +105,13 @@ def predict_lstm():
         lumiere     = float(current.get('lumiere',     20000))
         sol         = float(current.get('sol',         50))
 
-        base = np.array([temperature, humidity, co2, lumiere, sol])
-        sequence = []
-        for i in range(24):
-            noise = np.random.normal(0, 0.1, 5)
-            sequence.append(base + noise)
-
-        sequence = np.array(sequence, dtype='float32')
-        seq_norm = (sequence - lstm_mean) / lstm_std
-        seq_norm = seq_norm.reshape(1, 24, 5).astype('float32')
-
-        # ✅ Une seule prédiction au lieu de 6
-        pred_norm = lstm_model.predict(seq_norm, verbose=0)[0][0]
-        temp_base = float(pred_norm) * lstm_std[0] + lstm_mean[0]
-
         predictions = []
         now = datetime.datetime.now()
 
+        # Prévision basée sur tendance + variation naturelle
         for i in range(1, 7):
-            temp_pred   = round(temp_base + np.random.normal(0, 0.2), 1)
+            temp_drift  = temp_coef[0] * i * 0.1
+            temp_pred   = round(temperature + temp_drift + np.random.normal(0, 0.3), 1)
             hum_delta   = -0.8 * (temp_pred - temperature)
             co2_delta   = np.random.normal(0, 40)
             future_hour = now + datetime.timedelta(hours=i)
