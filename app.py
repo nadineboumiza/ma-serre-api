@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import numpy as np
 import joblib
-import tensorflow as tf
 import os
 import json
 import datetime
