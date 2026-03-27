@@ -143,7 +143,7 @@ def predict_plant():
         except Exception:
             return jsonify({'status': 'error', 'message': 'Base64 invalide'}), 400
 
-        model  = genai.GenerativeModel('gemini-2.0-flash')  # ✅ modèle à jour
+        model = genai.GenerativeModel('gemini-1.5-flash-8b')  # ✅ modèle à jour
         prompt = """Tu es un expert en agronomie et maladies des plantes de serre tunisiennes.
 
 Analyse cette photo de feuille de plante et fournis un diagnostic complet en JSON avec exactement cette structure :
