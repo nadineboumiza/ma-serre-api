@@ -6,25 +6,25 @@ import tensorflow as tf
 import os
 import json
 import google.generativeai as genai
-import urllib.request
-
-# Configure la clé une seule fois en dehors des fonctions
-genai.configure(api_key=os.environ.get('GOOGLE_API_KEY', 'AIzaSyARPIlFPmLqOb5iZM17V6eVg5gSPmZ2N2w'))
 
 app = Flask(__name__)
 CORS(app)
 
-# ── Charger les modèles ───────────────────────────────
+# ── Configurer Gemini ─────────────────────────────────────────
+genai.configure(api_key=os.environ.get('GEMINI_API_KEY', ''))
+
+# ── Charger les modèles ───────────────────────────────────────
 print("📦 Chargement des modèles ML...")
 
-rf_model   = joblib.load('models/rf_model.joblib')
-lstm_model = tf.keras.models.load_model('models/lstm_model.keras')
-lstm_mean  = np.load('models/lstm_mean.npy')
-lstm_std   = np.load('models/lstm_std.npy')
+rf_model    = joblib.load('models/rf_model.joblib')
+interpreter = tf.lite.Interpreter(model_path='models/lstm_model.tflite')
+interpreter.allocate_tensors()
+lstm_mean   = np.load('models/lstm_mean.npy')
+lstm_std    = np.load('models/lstm_std.npy')
 
 print("✅ Modèles chargés !")
 
-# ── Route test ────────────────────────────────────────
+# ── Route test ────────────────────────────────────────────────
 @app.route('/', methods=['GET'])
 def home():
     return jsonify({
@@ -36,9 +36,10 @@ def home():
             '/predict/plant    → Diagnostic Gemini Vision',
         ]
     })
-# ═══════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════════
 # ROUTE 1 — Random Forest (Risque maladie)
-# ═══════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 @app.route('/predict/disease', methods=['POST'])
 def predict_disease():
     try:
@@ -49,37 +50,30 @@ def predict_disease():
         co2         = float(body.get('co2',         800))
         sol         = float(body.get('sol',         50))
 
-        # Prédiction
-        X       = np.array([[temperature, humidity, co2, sol]])
-        pred    = rf_model.predict(X)[0]
-        proba   = rf_model.predict_proba(X)[0]
+        X     = np.array([[temperature, humidity, co2, sol]])
+        pred  = rf_model.predict(X)[0]
+        proba = rf_model.predict_proba(X)[0]
 
-        labels  = ['bon', 'attention', 'danger']
-        label   = labels[pred]
+        labels = ['bon', 'attention', 'danger']
+        label  = labels[pred]
 
-        # Probabilités
         prob_bon       = round(float(proba[0]) * 100, 1)
-        prob_attention = round(float(proba[1]) * 100, 1) \
-            if len(proba) > 1 else 0.0
-        prob_danger    = round(float(proba[2]) * 100, 1) \
-            if len(proba) > 2 else 0.0
+        prob_attention = round(float(proba[1]) * 100, 1) if len(proba) > 1 else 0.0
+        prob_danger    = round(float(proba[2]) * 100, 1) if len(proba) > 2 else 0.0
 
-        # Maladie probable
         disease = 'Aucune'
         if pred == 2:
-            disease = 'Botrytis' \
-                if humidity > 80 and temperature < 25 \
-                else 'Mildiou'
+            disease = 'Botrytis' if humidity > 80 and temperature < 25 else 'Mildiou'
         elif pred == 1:
             disease = 'Surveillance recommandée'
 
         return jsonify({
-            'status':          'ok',
-            'risk_level':      label,
-            'risk_percent':    round(prob_danger + prob_attention * 0.5),
-            'botrytis':        round(prob_danger * 0.7),
-            'mildew':          round(prob_danger * 0.55),
-            'disease':         disease,
+            'status':       'ok',
+            'risk_level':   label,
+            'risk_percent': round(prob_danger + prob_attention * 0.5),
+            'botrytis':     round(prob_danger * 0.7),
+            'mildew':       round(prob_danger * 0.55),
+            'disease':      disease,
             'probabilities': {
                 'bon':       prob_bon,
                 'attention': prob_attention,
@@ -90,9 +84,9 @@ def predict_disease():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-# ═══════════════════════════════════════════════════
-# ROUTE 2 — LSTM (Prévision 6 heures)
-# ═══════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
+# ROUTE 2 — LSTM TFLite (Prévision 6 heures)
+# ══════════════════════════════════════════════════════════════
 @app.route('/predict/lstm', methods=['POST'])
 def predict_lstm():
     try:
@@ -105,129 +99,99 @@ def predict_lstm():
         lumiere     = float(current.get('lumiere',     20000))
         sol         = float(current.get('sol',         50))
 
-        # Créer séquence de 24 pas simulée
-        base = np.array([temperature, humidity,
-                         co2, lumiere, sol])
+        base = np.array([temperature, humidity, co2, lumiere, sol])
         sequence = []
         for i in range(24):
             noise = np.random.normal(0, 0.1, 5)
             sequence.append(base + noise)
         sequence = np.array(sequence, dtype='float32')
 
-        # Normaliser
         seq_norm = (sequence - lstm_mean) / lstm_std
-        seq_norm = seq_norm.reshape(1, 24, 5)
+        seq_norm = seq_norm.reshape(1, 24, 5).astype('float32')
 
-        # Prédictions 6 heures
+        input_details  = interpreter.get_input_details()
+        output_details = interpreter.get_output_details()
+
         predictions = []
-        now         = __import__('datetime').datetime.now()
+        import datetime
+        now = datetime.datetime.now()
 
         for i in range(1, 7):
-            # Décaler la séquence
-            pred_norm  = lstm_model.predict(
-                seq_norm, verbose=0)[0][0]
+            interpreter.set_tensor(input_details[0]['index'], seq_norm)
+            interpreter.invoke()
+            pred_norm = interpreter.get_tensor(output_details[0]['index'])[0][0]
 
-            # Dénormaliser
-            temp_pred  = pred_norm * lstm_std[0] + lstm_mean[0]
-
-            # Humidité et CO₂ inversement corrélés
-            hum_delta  = -0.8 * (temp_pred - temperature)
-            co2_delta  = np.random.normal(0, 40)
-
-            future_hour = now + \
-                __import__('datetime').timedelta(hours=i)
+            temp_pred = float(pred_norm) * lstm_std[0] + lstm_mean[0]
+            hum_delta = -0.8 * (temp_pred - temperature)
+            co2_delta = np.random.normal(0, 40)
+            future_hour = now + datetime.timedelta(hours=i)
 
             predictions.append({
                 'label':       f'{future_hour.hour}h00',
                 'temperature': round(float(temp_pred), 1),
-                'humidity':    int(np.clip(
-                    humidity + hum_delta, 30, 95)),
-                'co2':         int(np.clip(
-                    co2 + co2_delta, 400, 2000)),
+                'humidity':    int(np.clip(humidity + hum_delta, 30, 95)),
+                'co2':         int(np.clip(co2 + co2_delta, 400, 2000)),
             })
 
-            # Mettre à jour séquence
-            new_point  = np.array([
+            new_point = np.array([
                 temp_pred, humidity + hum_delta,
                 co2 + co2_delta, lumiere, sol
             ], dtype='float32')
-            new_norm   = (new_point - lstm_mean) / lstm_std
-            seq_norm   = np.roll(seq_norm, -1, axis=1)
+            new_norm = (new_point - lstm_mean) / lstm_std
+            seq_norm = np.roll(seq_norm, -1, axis=1)
             seq_norm[0, -1, :] = new_norm
 
-        return jsonify({
-            'status':      'ok',
-            'predictions': predictions,
-        })
+        return jsonify({'status': 'ok', 'predictions': predictions})
 
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-
-
-
-   # ═══════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 # ROUTE 3 — Diagnostic plante (Google Gemini Vision)
-# ═══════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 @app.route('/predict/plant', methods=['POST'])
 def predict_plant():
     try:
-        # 1. Récupération des données du front-end (Flutter)
         body       = request.get_json()
         image_b64  = body.get('image', '')
         media_type = body.get('media_type', 'image/jpeg')
 
         if not image_b64:
-            return jsonify({
-                'status':  'error',
-                'message': 'Image manquante'
-            }), 400
+            return jsonify({'status': 'error', 'message': 'Image manquante'}), 400
 
-        # 2. Initialisation du modèle Gemini 1.5 Flash
-        # Utilise exactement ce nom :
         model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
+        prompt = """Tu es un expert en agronomie et maladies des plantes de serre tunisiennes.
 
+Analyse cette photo de feuille de plante et fournis un diagnostic complet en JSON avec exactement cette structure :
+{
+  "etat": "saine" ou "malade" ou "stress",
+  "maladie": "nom de la maladie ou Aucune",
+  "confiance": 85,
+  "symptomes": ["symptome 1", "symptome 2"],
+  "causes": ["cause 1", "cause 2"],
+  "traitement": ["etape 1", "etape 2", "etape 3"],
+  "prevention": ["conseil 1", "conseil 2"],
+  "urgence": "faible" ou "moyenne" ou "elevee",
+  "conseil": "message court pour l agriculteur"
+}
 
-        # 3. Le Prompt (Instructions précises)
-        prompt = '''Tu es un expert en agronomie et maladies des plantes de serre tunisiennes.
-        Analyse cette photo de feuille de plante et fournis un diagnostic complet en JSON avec exactement cette structure :
-        {
-          "etat": "saine" ou "malade" ou "stress",
-          "maladie": "nom de la maladie ou Aucune",
-          "confiance": 85,
-          "symptomes": ["symptome 1", "symptome 2"],
-          "causes": ["cause 1", "cause 2"],
-          "traitement": ["etape 1", "etape 2", "etape 3"],
-          "prevention": ["conseil 1", "conseil 2"],
-          "urgence": "faible" ou "moyenne" ou "elevee",
-          "conseil": "message court pour l agriculteur"
-        }
-        Reponds UNIQUEMENT avec le JSON valide, sans texte avant ou apres.'''
+Reponds UNIQUEMENT avec le JSON valide, sans texte avant ou apres."""
 
-        # 4. Appel à l'API Gemini avec l'image Base64
         response = model.generate_content([
             {'mime_type': media_type, 'data': image_b64},
             prompt
         ])
 
-        # 5. Nettoyage et conversion en dictionnaire Python
-        # Gemini entoure souvent le JSON de ```json ... ```, on les retire.
-        text_raw = response.text
-        clean_json = text_raw.replace('```json', '').replace('```', '').strip()
-        
-        result = json.loads(clean_json)
-        result['status'] = 'ok'  # Ajout du status pour ton application
-
+        clean = response.text.replace('```json', '').replace('```', '').strip()
+        result = json.loads(clean)
+        result['status'] = 'ok'
         return jsonify(result)
 
     except Exception as e:
-        # En cas d'erreur (Clé API invalide, format image corrompu, etc.)
-        return jsonify({
-            'status':  'error',
-            'message': str(e)
-        }), 500
- # ── Lancement ─────────────────────────────────────────
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+# ── Lancement ─────────────────────────────────────────────────
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
