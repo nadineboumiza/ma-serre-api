@@ -130,6 +130,37 @@ print(f"\n📊 LSTM — MAE : {mae:.4f}")
 
 model.save('models/lstm_model.keras')
 print("✅ LSTM sauvegardé → models/lstm_model.keras")
+# ═══════════════════════════════════════════════════
+# CONVERSION → TFLite ✅
+# ═══════════════════════════════════════════════════
+print("\n🔄 Conversion LSTM → TFLite...")
+
+converter = tf.lite.TFLiteConverter.from_keras_model(model)
+
+# ✅ Fix pour LSTM (TensorList ops)
+converter.target_spec.supported_ops = [
+    tf.lite.OpsSet.TFLITE_BUILTINS,
+    tf.lite.OpsSet.SELECT_TF_OPS       # ← obligatoire pour LSTM
+]
+converter._experimental_lower_tensor_list_ops = False  # ← clé du fix
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+
+tflite_model = converter.convert()
+
+with open('models/lstm_model.tflite', 'wb') as f:
+    f.write(tflite_model)
+
+# Vérification
+interpreter_test = tf.lite.Interpreter(model_path='models/lstm_model.tflite')
+interpreter_test.allocate_tensors()
+input_shape = interpreter_test.get_input_details()[0]['shape']
+print(f"✅ TFLite OK — input shape : {input_shape}")
+
+print("\n🎉 Tous les modèles sont prêts dans models/")
+print("📁 models/rf_model.joblib")
+print("📁 models/lstm_model.tflite")
+print("📁 models/lstm_mean.npy")
+print("📁 models/lstm_std.npy")
 
 print("\n🎉 Entraînement terminé !")
 print("📁 Modèles sauvegardés dans models/")
