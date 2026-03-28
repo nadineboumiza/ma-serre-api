@@ -6,14 +6,10 @@ import os
 import json
 import datetime
 import base64
-from google import genai
-from google.genai import types
+import requests as req
 
 app = Flask(__name__)
 CORS(app)
-
-# ── Configurer Gemini ─────────────────────────────────────────
-client_gemini = genai.Client(api_key=os.environ.get('GEMINI_API_KEY', ''))
 
 # ── Charger les modèles ───────────────────────────────────────
 print("📦 Chargement des modèles ML...")
@@ -124,7 +120,7 @@ def predict_lstm():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════
-# ROUTE 3 — Diagnostic plante (Gemini Vision) ✅ nouveau SDK
+# ROUTE 3 — Diagnostic plante (OpenRouter + Gemini)
 # ══════════════════════════════════════════════════════════════
 @app.route('/predict/plant', methods=['POST'])
 def predict_plant():
@@ -136,43 +132,62 @@ def predict_plant():
         if not image_b64:
             return jsonify({'status': 'error', 'message': 'Image manquante'}), 400
 
-        # Nettoyer préfixe data URL si présent
         if ',' in image_b64:
             image_b64 = image_b64.split(',')[1]
 
-        # Valider et décoder base64
         try:
-            image_bytes = base64.b64decode(image_b64)
+            base64.b64decode(image_b64)
         except Exception:
             return jsonify({'status': 'error', 'message': 'Base64 invalide'}), 400
 
         prompt = """Tu es un expert en agronomie et maladies des plantes de serre tunisiennes.
-
-Analyse cette photo de feuille de plante et fournis un diagnostic complet en JSON avec exactement cette structure :
+Analyse cette photo et fournis un diagnostic en JSON avec cette structure exacte :
 {
   "etat": "saine" ou "malade" ou "stress",
-  "maladie": "nom de la maladie ou Aucune",
+  "maladie": "nom ou Aucune",
   "confiance": 85,
   "symptomes": ["symptome 1", "symptome 2"],
   "causes": ["cause 1", "cause 2"],
-  "traitement": ["etape 1", "etape 2", "etape 3"],
+  "traitement": ["etape 1", "etape 2"],
   "prevention": ["conseil 1", "conseil 2"],
   "urgence": "faible" ou "moyenne" ou "elevee",
-  "conseil": "message court pour l agriculteur"
+  "conseil": "message court"
 }
-
 Reponds UNIQUEMENT avec le JSON valide, sans texte avant ou apres."""
 
-        # ✅ Nouveau SDK google-genai
-        response = client_gemini.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=[
-                types.Part.from_bytes(data=image_bytes, mime_type=media_type),
-                prompt
-            ]
+        response = req.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {os.environ.get('OPENROUTER_API_KEY', '')}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "google/gemini-2.0-flash-exp:free",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{media_type};base64,{image_b64}"
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": prompt
+                            }
+                        ]
+                    }
+                ]
+            },
+            timeout=30
         )
 
-        clean = response.text.strip()
+        data = response.json()
+        text = data['choices'][0]['message']['content']
+
+        clean = text.strip()
         if clean.startswith('```'):
             clean = clean.split('```')[1]
             if clean.startswith('json'):
@@ -186,8 +201,8 @@ Reponds UNIQUEMENT avec le JSON valide, sans texte avant ou apres."""
     except json.JSONDecodeError as e:
         return jsonify({
             'status':  'error',
-            'message': f'Réponse Gemini non parseable: {str(e)}',
-            'raw':     response.text if 'response' in locals() else ''
+            'message': f'Réponse non parseable: {str(e)}',
+            'raw':     text if 'text' in locals() else ''
         }), 500
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
