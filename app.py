@@ -37,6 +37,7 @@ def home():
             '/predict/disease  → Random Forest',
             '/predict/lstm     → Prévision LSTM',
             '/predict/plant    → Diagnostic Gemini Vision',
+            '/predict/conseil  → Conseil du jour ',
         ]
     })
 
