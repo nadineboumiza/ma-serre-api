@@ -19,6 +19,11 @@ lstm_mean  = np.load('models/lstm_mean.npy')
 lstm_std   = np.load('models/lstm_std.npy')
 temp_coef  = np.load('models/temp_coef.npy')
 data_stats = np.load('models/data_stats.npy')
+conseil_model  = joblib.load('models/conseil_model.joblib')
+conseil_enc    = joblib.load('models/conseil_encoder.joblib')
+
+with open('models/conseils_dict.json', 'r', encoding='utf-8') as f:
+    conseils_dict = json.load(f)
 
 print("✅ Modèles chargés !")
 
@@ -206,6 +211,70 @@ Reponds UNIQUEMENT avec le JSON valide, sans texte avant ou apres."""
         }), 500
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+# ══════════════════════════════════════════════════════════════
+# ROUTE 4 — Conseil du jour (ML + Règles expertes)
+# ══════════════════════════════════════════════════════════════
+@app.route('/predict/conseil', methods=['POST'])
+def predict_conseil():
+    try:
+        body = request.get_json()
+
+        farmer_name = body.get('farmerName',  'Agriculteur')
+        serre_name  = body.get('serreName',   'Ma Serre')
+        temperature = float(body.get('temperature', 20))
+        humidity    = float(body.get('humidity',    60))
+        co2         = float(body.get('co2',         800))
+        sol         = float(body.get('sol',         50))
+        lumiere     = float(body.get('lumiere',     20000))
+        risk        = body.get('risk',        'bon')
+        disease     = body.get('disease',     'Aucune')
+        temp_max    = float(body.get('tempMax', temperature + 2))
+
+        # ── 1. Prédiction ML ─────────────────────
+        X            = np.array([[temperature, humidity, co2, lumiere, sol]])
+        pred_encoded = conseil_model.predict(X)[0]
+        proba        = conseil_model.predict_proba(X)[0]
+        label        = conseil_enc.inverse_transform([pred_encoded])[0]
+        confiance    = round(float(np.max(proba)) * 100)
+
+        # ── 2. Récupérer le conseil ───────────────
+        conseil_info = conseils_dict.get(label, conseils_dict['conditions_normales'])
+
+        # ── 3. Personnaliser le texte ─────────────
+        heure        = datetime.datetime.now().strftime('%H:%M')
+        conseil_text = (
+            f"Bonjour {farmer_name} ! Il est {heure} et voici "
+            f"votre analyse de {serre_name}.\n\n"
+            f"{conseil_info['emoji']} {conseil_info['titre']}\n\n"
+            f"📊 Conditions actuelles :\n"
+            f"• Température : {temperature}°C (max prévue : {temp_max}°C)\n"
+            f"• Humidité : {humidity}%  •  Sol : {sol}%  •  CO₂ : {co2} ppm\n"
+        )
+
+        if disease != 'Aucune':
+            conseil_text += f"• ⚠️ Risque détecté : {disease}\n"
+
+        conseil_text += f"\n✅ Actions recommandées aujourd'hui :\n"
+        for i, action in enumerate(conseil_info['actions'], 1):
+            conseil_text += f"{i}. {action}\n"
+
+        conseil_text += (
+            f"\n🤖 Diagnostic IA : {label.replace('_', ' ').title()} "
+            f"(confiance {confiance}%)"
+        )
+
+        return jsonify({
+            'status':    'ok',
+            'conseil':   conseil_text,
+            'label':     label,
+            'urgence':   conseil_info['urgence'],
+            'confiance': confiance,
+            'emoji':     conseil_info['emoji'],
+            'actions':   conseil_info['actions'],
+        })
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500    
 
 # ── Lancement ─────────────────────────────────────────────────
 if __name__ == '__main__':
