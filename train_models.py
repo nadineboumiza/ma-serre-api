@@ -13,40 +13,54 @@ import joblib
 
 os.makedirs('models', exist_ok=True)
 
-print("📊 Chargement des données...")
+print("Chargement des donnees...")
 df = pd.read_csv('data/sensor_data.csv')
 df = df.dropna()
-print(f"✅ {len(df)} lignes chargées")
+print(f"{len(df)} lignes chargees")
 
-# ═══════════════════════════════════════════════════
-# MODÈLE 1 — RANDOM FOREST (Risque de maladie)
-# ═══════════════════════════════════════════════════
-print("\n🌲 Entraînement Random Forest...")
+# ═══════════════════════════════════════════════════════════════
+# MODELE 1 — RANDOM FOREST
+# Detecte le risque de maladie selon les seuils du PPTX
+# Features : temperature + humidity uniquement (vrais capteurs)
+# Labels   : 0=Bon  1=Attention  2=Danger
+# ═══════════════════════════════════════════════════════════════
+print("\nEntrainement Random Forest...")
 
 def compute_risk(row):
-    risk = 0
-    if row['humidity'] > 80 and 15 <= row['temperature'] <= 25:
-        risk += 40
-    if row['humidity'] > 85:
-        risk += 20
-    if row['co2'] > 1200:
-        risk += 10
-    if row['humidity'] > 75 and 18 <= row['temperature'] <= 22:
-        risk += 25
-    if row['temperature'] > 33:
-        risk += 15
-    if risk > 50:
-        return 2
-    elif risk > 25:
-        return 1
-    return 0
+    """
+    Score de risque base sur les seuils du PPTX :
+    Mildiou       : humidity > 90%  ET 10 <= temperature <= 25
+    Botrytis      : humidity > 85%  ET 15 <= temperature <= 20
+    Oidium        : 40 <= humidity <= 80 ET 20 <= temperature <= 27
+    Sclerotiniose : humidity > 90%  ET 10 <= temperature <= 20
+    Acariens      : humidity < 65%  ET temperature > 25
+    Aleurodes     : 20 <= temperature <= 30
+    Thrips        : temperature > 20 ET humidity < 50
+    Pucerons      : 15 <= temperature <= 25
+    """
+    score = 0
+    t = row['temperature']
+    h = row['humidity']
+
+    if h > 90 and 10 <= t <= 25:          score += 40   # Mildiou
+    if h > 85 and 15 <= t <= 20:          score += 35   # Botrytis
+    if 40 <= h <= 80 and 20 <= t <= 27:   score += 25   # Oidium
+    if h > 90 and 10 <= t <= 20:          score += 30   # Sclerotiniose
+    if h < 65 and t > 25:                 score += 35   # Acariens
+    if 20 <= t <= 30:                     score += 15   # Aleurodes
+    if t > 20 and h < 50:                 score += 25   # Thrips
+    if 15 <= t <= 25:                     score += 10   # Pucerons
+
+    if score >= 60: return 2    # Danger
+    elif score >= 30: return 1  # Attention
+    return 0                    # Bon
 
 df['risk_label'] = df.apply(compute_risk, axis=1)
 
 print("Distribution des classes :")
 print(df['risk_label'].value_counts())
 
-X_rf = df[['temperature', 'humidity', 'co2', 'sol']].values
+X_rf = df[['temperature', 'humidity']].values
 y_rf = df['risk_label'].values
 
 X_train, X_test, y_train, y_test = train_test_split(
@@ -55,7 +69,7 @@ X_train, X_test, y_train, y_test = train_test_split(
 rf = RandomForestClassifier(n_estimators=100, random_state=42, max_depth=10)
 rf.fit(X_train, y_train)
 
-print("\n📊 Rapport Random Forest :")
+print("\nRapport Random Forest :")
 print(classification_report(
     y_test, rf.predict(X_test),
     target_names=['Bon', 'Attention', 'Danger'],
@@ -63,46 +77,53 @@ print(classification_report(
 ))
 
 joblib.dump(rf, 'models/rf_model.joblib')
-print("✅ Random Forest sauvegardé → models/rf_model.joblib")
+print("Random Forest sauvegarde -> models/rf_model.joblib")
 
-# ═══════════════════════════════════════════════════
-# MODÈLE 2 — LSTM (entraînement local uniquement)
-# ═══════════════════════════════════════════════════
-print("\n🧠 Entraînement LSTM...")
+# ═══════════════════════════════════════════════════════════════
+# MODELE 2 — LSTM
+# Predit temperature ET humidity pour les 6 prochaines heures
+# Input  : 24 mesures passees de [temperature, humidity]
+# Output : [temperature_future, humidity_future]
+# ═══════════════════════════════════════════════════════════════
+print("\nEntrainement LSTM (temperature + humidity)...")
 
-features  = ['temperature', 'humidity', 'co2', 'lumiere', 'sol']
+features  = ['temperature', 'humidity']
 data_lstm = df[features].values.astype('float32')
 
-mean_vals = data_lstm.mean(axis=0)
-std_vals  = data_lstm.std(axis=0)
+# Normalisation
+mean_vals = data_lstm.mean(axis=0)   # [temp_mean, hum_mean]
+std_vals  = data_lstm.std(axis=0)    # [temp_std,  hum_std]
 std_vals[std_vals == 0] = 1
 data_norm = (data_lstm - mean_vals) / std_vals
 
 np.save('models/lstm_mean.npy', mean_vals)
 np.save('models/lstm_std.npy',  std_vals)
 
+# Construction des sequences
+# X : 24 mesures passees → y : 1 mesure future (temp + humidity)
 SEQ_LEN = 24
 X_seq, y_seq = [], []
 for i in range(len(data_norm) - SEQ_LEN - 1):
-    X_seq.append(data_norm[i:i + SEQ_LEN])
-    y_seq.append(data_norm[i + SEQ_LEN, 0])
+    X_seq.append(data_norm[i:i + SEQ_LEN])    # (24, 2)
+    y_seq.append(data_norm[i + SEQ_LEN])       # (2,)
 
-X_seq = np.array(X_seq)
-y_seq = np.array(y_seq)
-print(f"Séquences créées : {X_seq.shape}")
+X_seq = np.array(X_seq)   # shape (N, 24, 2)
+y_seq = np.array(y_seq)   # shape (N, 2)
+print(f"Sequences : X={X_seq.shape}  y={y_seq.shape}")
 
 split      = int(len(X_seq) * 0.8)
-X_tr, X_te = X_seq[:split],  X_seq[split:]
-y_tr, y_te = y_seq[:split],  y_seq[split:]
+X_tr, X_te = X_seq[:split], X_seq[split:]
+y_tr, y_te = y_seq[:split], y_seq[split:]
 
+# Architecture LSTM
 model = keras.Sequential([
-    keras.layers.Input(shape=(SEQ_LEN, len(features))),  # ✅ pas de warning
+    keras.layers.Input(shape=(SEQ_LEN, 2)),
     keras.layers.LSTM(64, return_sequences=True),
     keras.layers.Dropout(0.2),
     keras.layers.LSTM(32),
     keras.layers.Dropout(0.2),
     keras.layers.Dense(16, activation='relu'),
-    keras.layers.Dense(1),
+    keras.layers.Dense(2),   # 2 sorties : temperature ET humidity
 ])
 
 model.compile(optimizer='adam', loss='mse', metrics=['mae'])
@@ -117,35 +138,35 @@ model.fit(
 )
 
 loss, mae = model.evaluate(X_te, y_te, verbose=0)
-print(f"\n📊 LSTM — MAE : {mae:.4f}")
+print(f"\nLSTM — MAE : {mae:.4f}")
 
 model.save('models/lstm_model.keras')
-print("✅ LSTM sauvegardé → models/lstm_model.keras")
+print("LSTM sauvegarde -> models/lstm_model.keras")
 
-# ═══════════════════════════════════════════════════
-# MODÈLE LÉGER — export numpy (pour Render/production)
-# ═══════════════════════════════════════════════════
-print("\n💾 Export modèle léger pour production...")
+# ═══════════════════════════════════════════════════════════════
+# MODELE LEGER — fallback si LSTM non disponible en production
+# ═══════════════════════════════════════════════════════════════
+print("\nExport modele leger...")
 
 X_lin = np.arange(len(data_lstm)).reshape(-1, 1).astype('float32')
-y_lin = data_lstm[:, 0]  # température
-
 lr = LinearRegression()
-lr.fit(X_lin, y_lin)
+lr.fit(X_lin, data_lstm[:, 0])
 
 np.save('models/temp_coef.npy', np.array([lr.coef_[0], lr.intercept_]))
+
+# Stats pour temperature et humidity uniquement
 np.save('models/data_stats.npy', np.array([
-    data_lstm[:, 0].mean(),  # temp mean
-    data_lstm[:, 0].std(),   # temp std
-    data_lstm[:, 1].mean(),  # humidity mean
-    data_lstm[:, 2].mean(),  # co2 mean
+    data_lstm[:, 0].mean(),   # temperature moyenne
+    data_lstm[:, 0].std(),    # temperature ecart-type
+    data_lstm[:, 1].mean(),   # humidity moyenne
+    data_lstm[:, 1].std(),    # humidity ecart-type
 ]))
 
-print("✅ Modèle léger sauvegardé !")
-print("\n🎉 Tous les modèles sont prêts !")
-print("📁 models/rf_model.joblib")
-print("📁 models/lstm_model.keras")
-print("📁 models/lstm_mean.npy")
-print("📁 models/lstm_std.npy")
-print("📁 models/temp_coef.npy")
-print("📁 models/data_stats.npy")
+print("Modele leger sauvegarde !")
+print("\nTous les modeles sont prets !")
+print("  models/rf_model.joblib")
+print("  models/lstm_model.keras")
+print("  models/lstm_mean.npy  -> [temp_mean, hum_mean]")
+print("  models/lstm_std.npy   -> [temp_std,  hum_std]")
+print("  models/temp_coef.npy")
+print("  models/data_stats.npy")
