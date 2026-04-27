@@ -1,0 +1,178 @@
+{
+  "chaleur_extreme": {
+    "emoji": "🔥",
+    "titre": "Chaleur extrême détectée !",
+    "actions": [
+      "Ouvrez immédiatement toutes les fenêtres et aérations",
+      "Activez le système de refroidissement ou ventilateurs",
+      "Arrosez les allées pour rafraîchir l'air ambiant",
+      "Protégez les plantes fragiles avec un voile d'ombrage",
+      "Surveillez les plantes toutes les 30 minutes"
+    ],
+    "urgence": "critique"
+  },
+  "froid_extreme": {
+    "emoji": "🥶",
+    "titre": "Température trop basse !",
+    "actions": [
+      "Fermez toutes les ouvertures immédiatement",
+      "Activez le chauffage de la serre",
+      "Couvrez les plantes sensibles avec un voile thermique",
+      "Vérifiez les plants les plus fragiles",
+      "Évitez tout arrosage jusqu'au réchauffement"
+    ],
+    "urgence": "critique"
+  },
+  "humidite_critique": {
+    "emoji": "💧",
+    "titre": "Humidité critique — risque Mildiou / Sclérotiniose !",
+    "actions": [
+      "Augmentez la ventilation immédiatement (seuil PPTX : h > 90%)",
+      "Ouvrez les fenêtres et activez les ventilateurs",
+      "Évitez tout arrosage aujourd'hui",
+      "Inspectez les feuilles pour taches de mildiou ou pourriture blanche",
+      "Appliquez un fongicide préventif si nécessaire"
+    ],
+    "urgence": "elevee"
+  },
+  "sol_sec_urgent": {
+    "emoji": "🏜️",
+    "titre": "Sol très sec — arrosage urgent !",
+    "actions": [
+      "Arrosez abondamment toutes les plantes maintenant",
+      "Vérifiez que le système d'irrigation fonctionne",
+      "Augmentez la fréquence d'arrosage cette semaine",
+      "Ajoutez du paillis pour retenir l'humidité du sol",
+      "Surveillez l'état des plantes après arrosage"
+    ],
+    "urgence": "elevee"
+  },
+  "chaud_humide": {
+    "emoji": "🌫️",
+    "titre": "Conditions chaudes et humides",
+    "actions": [
+      "Améliorez la circulation d'air dans la serre",
+      "Réduisez l'arrosage de 30% aujourd'hui",
+      "Inspectez les feuilles pour signes de maladie",
+      "Appliquez un traitement préventif contre le mildiou",
+      "Surveillez la température toutes les heures"
+    ],
+    "urgence": "moyenne"
+  },
+  "chaleur_moderee": {
+    "emoji": "☀️",
+    "titre": "Température élevée",
+    "actions": [
+      "Ouvrez les aérations pour ventiler la serre",
+      "Arrosez tôt le matin ou en soirée",
+      "Vérifiez l'ombrage des plantes sensibles",
+      "Maintenez le sol humide mais pas détrempé",
+      "Surveillez les Aleurodes (mouches blanches) si T° > 25°C"
+    ],
+    "urgence": "faible"
+  },
+  "risque_maladie": {
+    "emoji": "🦠",
+    "titre": "Risque Mildiou — humidité > 85% et T° favorable",
+    "actions": [
+      "Augmentez la ventilation dès maintenant",
+      "Inspectez toutes les feuilles pour taches ou moisissures",
+      "Évitez tout arrosage par aspersion aujourd'hui",
+      "Appliquez un fongicide préventif sur les plantes",
+      "Éliminez les feuilles malades si trouvées"
+    ],
+    "urgence": "elevee"
+  },
+  "risque_botrytis": {
+    "emoji": "🍂",
+    "titre": "Risque de Botrytis — h > 85% et 15–20°C",
+    "actions": [
+      "Réduisez l'humidité en ventilant la serre (seuil PPTX : h > 85%)",
+      "Inspectez les fruits et fleurs pour pourriture grise",
+      "Supprimez immédiatement les parties infectées",
+      "Appliquez un traitement fongicide spécifique Botrytis",
+      "Évitez de mouiller le feuillage lors de l'arrosage"
+    ],
+    "urgence": "elevee"
+  },
+  "risque_oidium": {
+    "emoji": "⬜",
+    "titre": "Risque d'Oïdium — air sec et T° chaude",
+    "actions": [
+      "Vérifiez les feuilles pour dépôts blancs poudreux (seuil PPTX : 40–80% / 20–27°C)",
+      "Évitez le stress hydrique des plantes",
+      "Maintenez une hygrométrie stable (éviter les écarts)",
+      "Appliquez un traitement soufré préventif si nécessaire",
+      "Réduisez les courants d'air sec dans la serre"
+    ],
+    "urgence": "moyenne"
+  },
+  "co2_eleve": {
+    "emoji": "💨",
+    "titre": "Taux de CO₂ élevé",
+    "actions": [
+      "Ouvrez les fenêtres pour renouveler l'air",
+      "Vérifiez le bon fonctionnement de la ventilation",
+      "Contrôlez les équipements de chauffage",
+      "Augmentez la durée de ventilation quotidienne"
+    ],
+    "urgence": "moyenne"
+  },
+  "sol_sec": {
+    "emoji": "🌱",
+    "titre": "Sol un peu sec",
+    "actions": [
+      "Arrosez modérément les plantes ce soir",
+      "Vérifiez l'humidité du sol à 5cm de profondeur",
+      "Ajustez le programme d'irrigation si automatique",
+      "Évitez d'arroser en pleine chaleur"
+    ],
+    "urgence": "faible"
+  },
+  "humidite_faible": {
+    "emoji": "🏜️",
+    "titre": "Air trop sec — risque Acariens / Thrips",
+    "actions": [
+      "Augmentez l'arrosage progressivement",
+      "Vaporisez de l'eau sur les allées pour augmenter l'hygrométrie",
+      "Inspectez le dessous des feuilles pour araignées rouges (seuil PPTX : h < 65%)",
+      "Surveillez les fleurs pour présence de Thrips (h < 50%)",
+      "Installez un humidificateur si disponible"
+    ],
+    "urgence": "faible"
+  },
+  "lumiere_faible": {
+    "emoji": "🌑",
+    "titre": "Luminosité insuffisante",
+    "actions": [
+      "Vérifiez si les panneaux de la serre sont propres",
+      "Nettoyez les vitrages pour maximiser la lumière naturelle",
+      "Envisagez un éclairage d'appoint si nécessaire",
+      "Évitez d'arroser en excès par temps sombre (favorise les maladies)"
+    ],
+    "urgence": "faible"
+  },
+  "conditions_optimales": {
+    "emoji": "✅",
+    "titre": "Conditions excellentes !",
+    "actions": [
+      "Continuez votre programme d'arrosage habituel",
+      "Profitez pour faire une inspection générale des plantes",
+      "C'est le bon moment pour fertiliser si nécessaire",
+      "Vérifiez la croissance et notez les progrès",
+      "Maintenez ces conditions le plus longtemps possible"
+    ],
+    "urgence": "aucune"
+  },
+  "conditions_normales": {
+    "emoji": "🌿",
+    "titre": "Conditions normales",
+    "actions": [
+      "Maintenez votre routine d'entretien habituelle",
+      "Arrosez selon les besoins de chaque plante",
+      "Faites une inspection visuelle des feuilles",
+      "Vérifiez les niveaux de nutriments si nécessaire"
+    ],
+    "urgence": "aucune"
+  }
+}
