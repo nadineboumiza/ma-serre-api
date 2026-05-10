@@ -7,6 +7,7 @@ import json
 import datetime
 import base64
 import requests as req
+import pandas as pd
 
 app = Flask(__name__)
 CORS(app)
@@ -15,8 +16,8 @@ CORS(app)
 print("Chargement des modeles ML...")
 
 rf_model   = joblib.load('models/rf_model.joblib')
-lstm_mean  = np.load('models/lstm_mean.npy')   # [temp_mean, hum_mean]
-lstm_std   = np.load('models/lstm_std.npy')    # [temp_std,  hum_std]
+lstm_mean  = np.load('models/lstm_mean.npy')
+lstm_std   = np.load('models/lstm_std.npy')
 temp_coef  = np.load('models/temp_coef.npy')
 data_stats = np.load('models/data_stats.npy')
 
@@ -58,6 +59,7 @@ def home():
             '/predict/lstm',
             '/predict/plant',
             '/predict/conseil',
+            '/sync',
         ]
     })
 
@@ -100,7 +102,7 @@ def detect_diseases(temperature, humidity, co2, sol):
         })
         risk_max = max(risk_max, botrytis_risk)
 
-    # 3. OIDIUM (cas humidity<40 supprime — absent du PPTX)
+    # 3. OIDIUM
     oidium_risk = 0
     if 40 <= humidity <= 80 and 20 <= temperature <= 27:   oidium_risk = 70
     elif 35 <= humidity <= 80 and 18 <= temperature <= 30: oidium_risk = 45
@@ -143,7 +145,7 @@ def detect_diseases(temperature, humidity, co2, sol):
         })
         risk_max = max(risk_max, acariens_risk)
 
-    # 6. ALEURODES (CO2 comme proxy de confinement)
+    # 6. ALEURODES
     aleurodes_risk = 0
     if temperature > 25 and co2 > 1000:           aleurodes_risk = 65
     elif 20 <= temperature <= 30 and co2 > 800:   aleurodes_risk = 40
@@ -191,8 +193,6 @@ def detect_diseases(temperature, humidity, co2, sol):
 
 # ═════════════════════════════════════════════════════════════
 # ROUTE 1 — Detection maladies
-# Recoit : temperature, humidity, co2, sol
-# Retourne : liste maladies + risque global
 # ═════════════════════════════════════════════════════════════
 @app.route('/predict/disease', methods=['POST'])
 def predict_disease():
@@ -203,10 +203,8 @@ def predict_disease():
         co2         = float(body.get('co2',         800))
         sol         = float(body.get('sol',         50))
 
-        # Seuils agronomiques PPTX
         diseases, risk_max = detect_diseases(temperature, humidity, co2, sol)
 
-        # Random Forest — temperature + humidity uniquement (vrais capteurs)
         X     = np.array([[temperature, humidity]])
         pred  = rf_model.predict(X)[0]
         proba = rf_model.predict_proba(X)[0]
@@ -221,8 +219,8 @@ def predict_disease():
         combined = max(ml_risk, risk_max)
 
         main_disease = diseases[0]['nom'] if diseases else 'Aucune'
-        botrytis = next((d['risk'] for d in diseases if 'Botrytis'  in d['nom']), 0)
-        mildew   = next((d['risk'] for d in diseases if 'Mildiou'   in d['nom']), 0)
+        botrytis = next((d['risk'] for d in diseases if 'Botrytis' in d['nom']), 0)
+        mildew   = next((d['risk'] for d in diseases if 'Mildiou'  in d['nom']), 0)
 
         return jsonify({
             'status':       'ok',
@@ -239,13 +237,16 @@ def predict_disease():
             }
         })
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        import traceback
+        return jsonify({
+            'status':    'error',
+            'message':   str(e),
+            'traceback': traceback.format_exc()
+        }), 500
 
 
 # ═════════════════════════════════════════════════════════════
-# ROUTE 2 — Prevision LSTM
-# Recoit : temperature, humidity (vrais capteurs)
-# Retourne : previsions temperature + humidity sur 6 heures
+# ROUTE 2 — Prevision LSTM temperature + humidity
 # ═════════════════════════════════════════════════════════════
 @app.route('/predict/lstm', methods=['POST'])
 def predict_lstm():
@@ -259,40 +260,28 @@ def predict_lstm():
         predictions = []
 
         if USE_LSTM and lstm_model is not None:
-            # ── Vrai LSTM ─────────────────────────────────────
-            # Construire une sequence de 24 points depuis la valeur actuelle
             seq = np.tile(
                 np.array([[temperature, humidity]], dtype='float32'), (24, 1))
             seq += np.random.normal(0, 0.1, seq.shape).astype('float32')
-
-            # Normaliser
-            seq_norm = (seq - lstm_mean) / lstm_std    # (24, 2)
-            seq_norm = seq_norm[np.newaxis, ...]        # (1, 24, 2)
+            seq_norm = (seq - lstm_mean) / lstm_std
+            seq_norm = seq_norm[np.newaxis, ...]
 
             for i in range(1, 7):
-                # Predire la prochaine valeur normalisee
-                pred_norm = lstm_model.predict(seq_norm, verbose=0)[0]  # (2,)
-
-                # Denormaliser
+                pred_norm = lstm_model.predict(seq_norm, verbose=0)[0]
                 temp_pred = round(float(
                     np.clip(pred_norm[0] * lstm_std[0] + lstm_mean[0], 10, 40)), 1)
                 hum_pred  = int(
                     np.clip(pred_norm[1] * lstm_std[1] + lstm_mean[1], 30, 95))
-
                 future_hour = now + datetime.timedelta(hours=i)
                 predictions.append({
                     'label':       f'{future_hour.hour}h00',
                     'temperature': temp_pred,
                     'humidity':    hum_pred,
                 })
-
-                # Sliding window — faire glisser la sequence
-                new_point = pred_norm[np.newaxis, np.newaxis, :]  # (1, 1, 2)
+                new_point = pred_norm[np.newaxis, np.newaxis, :]
                 seq_norm  = np.concatenate(
                     [seq_norm[:, 1:, :], new_point], axis=1)
-
         else:
-            # ── Fallback modele leger ─────────────────────────
             for i in range(1, 7):
                 temp_drift  = temp_coef[0] * i * 0.1
                 temp_pred   = round(float(np.clip(
@@ -311,13 +300,16 @@ def predict_lstm():
             'model':       'lstm' if USE_LSTM else 'leger',
         })
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        import traceback
+        return jsonify({
+            'status':    'error',
+            'message':   str(e),
+            'traceback': traceback.format_exc()
+        }), 500
 
 
 # ═════════════════════════════════════════════════════════════
 # ROUTE 3 — Diagnostic plante (OpenRouter + Gemini Vision)
-# Recoit : image en base64
-# Retourne : diagnostic JSON de la plante
 # ═════════════════════════════════════════════════════════════
 @app.route('/predict/plant', methods=['POST'])
 def predict_plant():
@@ -392,15 +384,13 @@ Reponds UNIQUEMENT avec le JSON valide, sans texte avant ou apres."""
 
 # ═════════════════════════════════════════════════════════════
 # ROUTE 4 — Conseil du jour
-# Recoit : temperature, humidity, co2, lumiere, sol + infos agriculteur
-# Retourne : conseil personnalise + actions recommandees
 # ═════════════════════════════════════════════════════════════
 @app.route('/predict/conseil', methods=['POST'])
 def predict_conseil():
     if conseil_model is None or conseil_enc is None:
         return jsonify({
             'status':  'error',
-            'message': 'Modele conseil non disponible. Lancez train_conseil.py.'
+            'message': 'Modele conseil non disponible.'
         }), 503
 
     try:
@@ -411,11 +401,10 @@ def predict_conseil():
         humidity    = float(body.get('humidity',    60))
         co2         = float(body.get('co2',         800))
         sol         = float(body.get('sol',         50))
-        lumiere     = float(body.get('lumiere',     500))   # W/m2
+        lumiere     = float(body.get('lumiere',     500))
         disease     = body.get('disease',     'Aucune')
         temp_max    = float(body.get('tempMax', temperature + 2))
 
-        # Prediction ML
         X            = np.array([[temperature, humidity, co2, lumiere, sol]])
         pred_encoded = conseil_model.predict(X)[0]
         proba        = conseil_model.predict_proba(X)[0]
@@ -458,6 +447,35 @@ def predict_conseil():
             'actions':   conseil_info['actions'],
         })
 
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'status':    'error',
+            'message':   str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+# ═════════════════════════════════════════════════════════════
+# ROUTE 5 — Sync Firebase → CSV
+# ═════════════════════════════════════════════════════════════
+@app.route('/sync', methods=['POST'])
+def sync_data():
+    """Reçoit une mesure depuis Firebase et l'ajoute au CSV."""
+    try:
+        body = request.get_json()
+        new_row = {
+            'timestamp':   datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'temperature': float(body.get('temperature', 20)),
+            'humidity':    float(body.get('humidite', 60)),
+            'lumiere':     float(body.get('Luminosite', 500)),
+            'co2':         float(body.get('co2', 800)),
+            'sol':         float(body.get('sol', 50)),
+        }
+        df = pd.read_csv('data/sensor_data.csv')
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        df.to_csv('data/sensor_data.csv', index=False)
+        return jsonify({'status': 'ok', 'added': new_row})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
