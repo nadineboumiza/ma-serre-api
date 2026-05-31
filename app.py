@@ -314,6 +314,7 @@ def predict_lstm():
 @app.route('/predict/plant', methods=['POST'])
 def predict_plant():
     try:
+        print("=== /predict/plant appelé ===") 
         body       = request.get_json()
         image_b64  = body.get('image', '')
         media_type = body.get('media_type', 'image/jpeg')
@@ -349,7 +350,7 @@ Reponds UNIQUEMENT avec le JSON valide, sans texte avant ou apres."""
                 "Content-Type": "application/json"
             },
             json={
-                "model": "openrouter/free",
+                "model": "nvidia/nemotron-nano-12b-v2-vl:free",
                 "messages": [{"role": "user", "content": [
                     {"type": "image_url",
                      "image_url": {"url": f"data:{media_type};base64,{image_b64}"}},
@@ -358,6 +359,9 @@ Reponds UNIQUEMENT avec le JSON valide, sans texte avant ou apres."""
             },
             timeout=30
         )
+        print("=== OpenRouter RAW ===")
+        print("Status:", response.status_code)
+        print("Body:", response.text[:1000])
 
         data  = response.json()
         text  = data['choices'][0]['message']['content']
